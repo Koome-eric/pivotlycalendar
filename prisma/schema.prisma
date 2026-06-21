@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Connection type ──────────────────────────────────────────────────────────
+
+enum ConnectionType {
+  OAUTH               // Standard GHL Marketplace OAuth
+  PRIVATE_INTEGRATION // Location-level permanent token (no refresh needed)
+  AGENCY_KEY          // Agency API key (scoped to a location at request time)
+}
+
+// ─── OAuth / install ─────────────────────────────────────────────────────────
+
+model Location {
+  id          String   @id @default(cuid())
+  locationId  String   @unique
+  companyId   String?
+  name        String?
+  isActive    Boolean  @default(true)
+  installedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  oauthToken      OAuthToken?
+  calendarSources CalendarSource[]
+
+  @@map("locations")
+}
+
+model OAuthToken {
+  id         String   @id @default(cuid())
+  locationId String   @unique
+  location   Location @relation(fields: [locationId], references: [locationId], onDelete: Cascade)
+
+  accessToken  String         @db.Text
+  refreshToken String?        @db.Text  // null for PRIVATE_INTEGRATION / AGENCY_KEY
+  connectionType ConnectionType @default(OAUTH)
+  userType     String         // "Location" | "Company"
+  scope        String?
+  expiresAt    DateTime?      // null for non-expiring tokens
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("oauth_tokens")
+}
+
+// ─── Calendar import ─────────────────────────────────────────────────────────
+
+enum SourceType {
+  ICS_URL
+  ICS_FILE
+}
+
+model CalendarSource {
+  id            String   @id @default(cuid())
+  locationId    String
+  location      Location @relation(fields: [locationId], references: [locationId], onDelete: Cascade)
+
+  sourceType    SourceType
+  url           String?
+  label         String?    // user-supplied name e.g. "Airbnb calendar"
+  ghlCalendarId String
+
+  lastSyncAt DateTime?
+  isActive   Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  importJobs     ImportJob[]
+  importedEvents ImportedEvent[]
+
+  @@map("calendar_sources")
+}
+
+enum ImportJobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model ImportJob {
+  id               String         @id @default(cuid())
+  calendarSourceId String
+  calendarSource   CalendarSource @relation(fields: [calendarSourceId], references: [id], onDelete: Cascade)
+
+  status        ImportJobStatus @default(PENDING)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  errorMessage  String?         @db.Text
+
+  eventsCreated Int @default(0)
+  eventsUpdated Int @default(0)
+  eventsSkipped Int @default(0)
+  eventsFailed  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  syncLogs SyncLog[]
+
+  @@map("import_jobs")
+}
+
+model ImportedEvent {
+  id               String         @id @default(cuid())
+  calendarSourceId String
+  calendarSource   CalendarSource @relation(fields: [calendarSourceId], references: [id], onDelete: Cascade)
+
+  externalUid String
+  startTime   DateTime
+  endTime     DateTime
+  title       String?
+  allDay      Boolean  @default(false)
+  ghlEventId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([calendarSourceId, externalUid, startTime, endTime])
+  @@map("imported_events")
+}
+
+model SyncLog {
+  id          String    @id @default(cuid())
+  importJobId String
+  importJob   ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  status  String  // "info" | "warning" | "error"
+  message String  @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@map("sync_logs")
+}
