@@ -71,12 +71,20 @@ export default async function DashboardPage({
             <code className="font-mono">{location.locationId}</code>
           </p>
         </div>
-        <Link
-          href={`/import?locationId=${encodeURIComponent(locationId)}`}
-          className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:opacity-90 transition"
-        >
-          + Add calendar source
-        </Link>
+        <div className="shrink-0 flex items-center gap-2">
+          <Link
+            href={`/calendars?locationId=${encodeURIComponent(locationId)}`}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:border-accent transition"
+          >
+            View calendars
+          </Link>
+          <Link
+            href={`/import?locationId=${encodeURIComponent(locationId)}`}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:opacity-90 transition"
+          >
+            + Add calendar source
+          </Link>
+        </div>
       </div>
 
       {/* Calendar sources */}

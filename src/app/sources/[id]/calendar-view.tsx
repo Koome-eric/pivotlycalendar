@@ -14,7 +14,7 @@ import {
   isToday,
 } from "date-fns";
 
-interface ImportedEvent {
+export interface ImportedEvent {
   id: string;
   externalUid: string;
   startTime: string;
@@ -22,19 +22,48 @@ interface ImportedEvent {
   title: string | null;
   allDay: boolean;
   ghlEventId: string | null;
+  sourceId?: string;
+  sourceLabel?: string;
 }
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Fixed palette so each source gets a consistent, distinguishable color
+// across the merged calendar view and its legend. Chosen for contrast
+// against the dark surface background, independent of the single --accent
+// token (which stays reserved for the single-source case).
+const SOURCE_PALETTE = [
+  { dot: "bg-amber-400", chip: "bg-amber-400/80 hover:bg-amber-400 text-amber-950" },
+  { dot: "bg-sky-400", chip: "bg-sky-400/80 hover:bg-sky-400 text-sky-950" },
+  { dot: "bg-emerald-400", chip: "bg-emerald-400/80 hover:bg-emerald-400 text-emerald-950" },
+  { dot: "bg-fuchsia-400", chip: "bg-fuchsia-400/80 hover:bg-fuchsia-400 text-fuchsia-950" },
+  { dot: "bg-rose-400", chip: "bg-rose-400/80 hover:bg-rose-400 text-rose-950" },
+  { dot: "bg-violet-400", chip: "bg-violet-400/80 hover:bg-violet-400 text-violet-950" },
+];
+
+function colorForSource(sourceId: string | undefined, sourceOrder: string[]) {
+  if (!sourceId) return null;
+  const idx = sourceOrder.indexOf(sourceId);
+  if (idx === -1) return SOURCE_PALETTE[0];
+  return SOURCE_PALETTE[idx % SOURCE_PALETTE.length];
+}
 
 export function SourceCalendarView({
   events,
   loading,
   onSelectEvent,
+  sources,
 }: {
   events: ImportedEvent[];
   loading: boolean;
   onSelectEvent: (event: ImportedEvent) => void;
+  /** When provided (2+ entries), renders a color legend and tints each
+   *  event chip by its source — used by the merged "View calendars" page.
+   *  Omitted on the single-source page, where everything stays accent-colored. */
+  sources?: { id: string; label: string; eventCount: number }[];
 }) {
+  const sourceOrder = useMemo(() => (sources ?? []).map((s) => s.id), [sources]);
+  const showLegend = !!sources && sources.length > 1;
   const [visibleMonth, setVisibleMonth] = useState<Date>(new Date());
   const hasSetInitialMonth = useRef(false);
 
@@ -102,6 +131,22 @@ export function SourceCalendarView({
         </div>
       </div>
 
+      {/* Source legend (only when merging multiple sources on one calendar) */}
+      {showLegend && sources && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2.5 bg-background/20">
+          {sources.map((s) => {
+            const color = colorForSource(s.id, sourceOrder);
+            return (
+              <span key={s.id} className="inline-flex items-center gap-1.5 text-[11px] text-muted">
+                <span className={`h-2 w-2 rounded-full ${color?.dot ?? "bg-accent"}`} />
+                {s.label}
+                <span className="text-muted/60">({s.eventCount})</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {loading ? (
         <div className="px-6 py-16 text-center text-xs text-muted">Loading events…</div>
       ) : (
@@ -145,17 +190,22 @@ export function SourceCalendarView({
                     {format(day, "d")}
                   </p>
                   <div className="space-y-1">
-                    {visibleEvents.map((ev) => (
-                      <button
-                        key={ev.id}
-                        onClick={() => onSelectEvent(ev)}
-                        title={ev.title ?? "Busy"}
-                        className="block w-full truncate rounded px-1 py-0.5 text-left text-[10px] leading-tight text-accent-foreground bg-accent/80 hover:bg-accent transition"
-                      >
-                        {ev.allDay ? "" : format(new Date(ev.startTime), "HH:mm ")}
-                        {ev.title ?? "Busy"}
-                      </button>
-                    ))}
+                    {visibleEvents.map((ev) => {
+                      const color = colorForSource(ev.sourceId, sourceOrder);
+                      return (
+                        <button
+                          key={ev.id}
+                          onClick={() => onSelectEvent(ev)}
+                          title={showLegend && ev.sourceLabel ? `${ev.title ?? "Busy"} · ${ev.sourceLabel}` : ev.title ?? "Busy"}
+                          className={`block w-full truncate rounded px-1 py-0.5 text-left text-[10px] leading-tight transition ${
+                            color ? color.chip : "text-accent-foreground bg-accent/80 hover:bg-accent"
+                          }`}
+                        >
+                          {ev.allDay ? "" : format(new Date(ev.startTime), "HH:mm ")}
+                          {ev.title ?? "Busy"}
+                        </button>
+                      );
+                    })}
                     {hiddenCount > 0 && (
                       <button
                         onClick={() => setExpandedDay(isExpanded ? null : key)}
